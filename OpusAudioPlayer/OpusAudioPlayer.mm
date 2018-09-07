@@ -523,8 +523,8 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
         for (int i = 0; i < self->_filledAudioBufferCount; i++)
         {
             if (self->_filledAudioBuffers[i]->size != 0)
-                memset(_filledAudioBuffers[i]->data, 0, self->_filledAudioBuffers[i]->size);
-            _filledAudioBuffers[i]->pcmOffset = self->_currentPcmOffset;
+                memset(self->_filledAudioBuffers[i]->data, 0, self->_filledAudioBuffers[i]->size);
+            self->_filledAudioBuffers[i]->pcmOffset = self->_currentPcmOffset;
         }
         pthread_mutex_unlock(&filledBuffersLock);
         

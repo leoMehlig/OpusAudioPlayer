@@ -34,8 +34,8 @@
         {
             int64_t randomId = 0;
             arc4random_buf(&randomId, 8);
-            _fileName = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString alloc] initWithFormat:@"%" PRIx64 ".ogg", randomId]];
-            _fileExists = false;
+            self->_fileName = [NSTemporaryDirectory() stringByAppendingPathComponent:[[NSString alloc] initWithFormat:@"%" PRIx64 ".ogg", randomId]];
+            self->_fileExists = false;
         }];
     }
     return self;
@@ -50,9 +50,9 @@
         
         [_queue dispatch:^
         {
-            _fileName = filePath;
-            _length = [[[NSFileManager defaultManager] attributesOfItemAtPath:_fileName error:nil][NSFileSize] unsignedIntegerValue];
-            _fileExists = [[NSFileManager defaultManager] fileExistsAtPath:_fileName];
+            self->_fileName = filePath;
+            self->_length = [[[NSFileManager defaultManager] attributesOfItemAtPath:self->_fileName error:nil][NSFileSize] unsignedIntegerValue];
+            self->_fileExists = [[NSFileManager defaultManager] fileExistsAtPath:self->_fileName];
         }];
     }
     return self;
@@ -62,8 +62,8 @@
 {
     [_queue dispatch:^
     {   
-        [[NSFileManager defaultManager] moveItemAtPath:_fileName toPath:path error:nil];
-        _fileName = path;
+        [[NSFileManager defaultManager] moveItemAtPath:self->_fileName toPath:path error:nil];
+        self->_fileName = path;
     }];
 }
 
@@ -71,7 +71,7 @@
 {
     [_queue dispatch:^
     {
-        [[NSFileManager defaultManager] removeItemAtPath:_fileName error:nil];
+        [[NSFileManager defaultManager] removeItemAtPath:self->_fileName error:nil];
     }];
 }
 
@@ -79,19 +79,19 @@
 {
     [_queue dispatch:^
     {
-        if (!_fileExists)
+        if (!self->_fileExists)
         {
-            [[NSFileManager defaultManager] createFileAtPath:_fileName contents:nil attributes:nil];
-            _fileExists = true;
+            [[NSFileManager defaultManager] createFileAtPath:self->_fileName contents:nil attributes:nil];
+            self->_fileExists = true;
         }
-        NSFileHandle *file = [NSFileHandle fileHandleForUpdatingAtPath:_fileName];
+        NSFileHandle *file = [NSFileHandle fileHandleForUpdatingAtPath:self->_fileName];
         [file seekToEndOfFile];
         [file writeData:data];
         [file synchronizeFile];
         [file closeFile];
-        _length += data.length;
+        self->_length += data.length;
         
-        [_data appendData:data];
+        [self->_data appendData:data];
     }];
 }
 
@@ -101,7 +101,7 @@
     
     [_queue dispatch:^
     {
-        NSFileHandle *file = [NSFileHandle fileHandleForUpdatingAtPath:_fileName];
+        NSFileHandle *file = [NSFileHandle fileHandleForUpdatingAtPath:self->_fileName];
         [file seekToFileOffset:(unsigned long long)offset];
         data = [file readDataOfLength:length];
         if (data.length != length)
@@ -117,7 +117,7 @@
     __block NSUInteger result = 0;
     [_queue dispatch:^
     {
-        result = _length;
+        result = self->_length;
     } synchronous:true];
     
     return result;

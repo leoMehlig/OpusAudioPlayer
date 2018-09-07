@@ -14,7 +14,11 @@
 
 - (instancetype)initWithPath:(NSString *)path;
 
-- (void) playFromPosition: (double) position;
+- (void)play;
+- (void)playFromPosition:(NSTimeInterval)position;
+- (void)pause:(void (^)())completion;
+- (void)stop;
+- (NSTimeInterval)currentPositionSync:(bool)sync;
+- (NSTimeInterval)duration;
 
-- (void) play;
 @end
