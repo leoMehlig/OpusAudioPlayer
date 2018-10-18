@@ -99,8 +99,7 @@ static os_unfair_lock audioPositionLock = OS_UNFAIR_LOCK_INIT;
             self->_fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:nil][NSFileSize] integerValue];
             if (self->_fileSize == 0)
             {
-//                NSLog(@"[TGOpusAudioPlayer#%p invalid file]", self);
-                [self cleanupAndReportError];
+                [self cleanupAndReportError: [NSError errorWithDomain:@"org.telegram.opusaudioplayer" code:400 userInfo:@{ @"message" : [NSString stringWithFormat:@"[TGOpusAudioPlayer#%p invalid file]", self]}]];
             }
         }];
     }
@@ -112,9 +111,10 @@ static os_unfair_lock audioPositionLock = OS_UNFAIR_LOCK_INIT;
     [self cleanup];
 }
 
-- (void)cleanupAndReportError
+- (void)cleanupAndReportError: (NSError*) error
 {
     [self cleanup];
+    [self.delegate didFailWithError:error];
 }
 
 - (void)cleanup
@@ -142,30 +142,18 @@ static os_unfair_lock audioPositionLock = OS_UNFAIR_LOCK_INIT;
     AUGraph audioGraph = _graph;
     _graph = NULL;
     _audioGraphInitialized = false;
-    
-    intptr_t objectId = (intptr_t)self;
-    
+
     [[OpusAudioPlayer _playerQueue] dispatchOnQueue:^
     {
         if (audioGraph != NULL)
         {
-            OSStatus status = noErr;
-            
-            status = AUGraphStop(audioGraph);
-            if (status != noErr)
-                NSLog(@"[TGOpusAudioPlayer#%lx AUGraphStop failed: %d]", objectId, (int)status);
-            
-            status = AUGraphUninitialize(audioGraph);
-            if (status != noErr)
-                NSLog(@"[TGOpusAudioPlayer#%lx AUGraphUninitialize failed: %d]", objectId, (int)status);
-            
-            status = AUGraphClose(audioGraph);
-            if (status != noErr)
-                NSLog(@"[TGOpusAudioPlayer#%lx AUGraphClose failed: %d]", objectId, (int)status);
-            
-            status = DisposeAUGraph(audioGraph);
-            if (status != noErr)
-                NSLog(@"[TGOpusAudioPlayer#%lx DisposeAUGraph failed: %d]", objectId, (int)status);
+            [self perform:AUGraphStop(audioGraph) error:@"AUGraphStop"];
+
+            [self perform:AUGraphUninitialize(audioGraph) error:@"AUGraphUninitialize"];
+
+            [self perform:AUGraphClose(audioGraph) error:@"AUGraphClose"];
+
+            [self perform:DisposeAUGraph(audioGraph) error:@"DisposeAUGraph"];
         }
         
         if (opusFile != NULL)
@@ -204,6 +192,7 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
 
                 os_unfair_lock_lock(&audioPositionLock);
                 self->_currentPcmOffset = self->_filledAudioBuffers[0]->pcmOffset + self->_filledAudioBufferPosition / 2;
+                [self.delegate didUpdatePosition:self->_currentPcmOffset / (NSTimeInterval)TGOpusAudioPlayerSampleRate];
                 os_unfair_lock_unlock(&audioPositionLock);
 
                 int takenBytes = MIN((int)self->_filledAudioBuffers[0]->size - self->_filledAudioBufferPosition, requiredBytes - writtenBytes);
@@ -273,7 +262,11 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
     }
     else {
         NSLog(@"[TGOpusAudioPlayer#%@ %@ failed: %d]", self, error, (int)status);
-        [self cleanupAndReportError];
+        [self cleanupAndReportError: [NSError errorWithDomain:@"org.telegram.opusaudioplayer"
+                                                           code:(int)status
+                                                       userInfo:@{
+                                                                  @"message" : [NSString stringWithFormat:@"[TGOpusAudioPlayer#%@ %@ failed: %d]", self, error, (int)status]
+                                                                  }]];
         return false;
     }
 }
@@ -300,8 +293,11 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
             if (self->_opusFile == NULL || openError != OPUS_OK)
             {
                 NSLog(@"[TGOpusAudioPlayer#%p op_open_file failed: %d]", self, openError);
-                [self cleanupAndReportError];
-                return;
+                [self cleanupAndReportError: [NSError errorWithDomain:@"org.telegram.opusaudioplayer"
+                                                                 code:openError
+                                                             userInfo:@{
+                                                                        @"message" : [NSString stringWithFormat:@"[TGOpusAudioPlayer#%p op_open_file failed: %d]", self, openError]
+                                                                        }]];                return;
             }
             
             self->_totalPcmDuration = op_pcm_total(self->_opusFile, -1);
@@ -421,6 +417,7 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
             self->_filledAudioBufferPosition = 0;
             pthread_mutex_unlock(&filledBuffersLock);
         }
+        [self.delegate didStartPlayingFromPosition:position];
     }];
 }
 
@@ -466,6 +463,7 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
                     else
                     {
                         if (readSamples < 0)
+                            [self.delegate didFailWithError:[NSError errorWithDomain:@"org.telegram.opusaudioplayer" code:1 userInfo:@{ @"message" : [NSString stringWithFormat:@"[TGOpusAudioPlayer#%p op_read failed: %d]", self, readSamples]}]];
                             NSLog(@"[TGOpusAudioPlayer#%p op_read failed: %d]", self, readSamples);
                         
                         endOfFileReached = true;
@@ -476,8 +474,10 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
                 
                 audioBuffer->size = writtenOutputBytes;
                 
-                if (endOfFileReached)
+                if (endOfFileReached) {
                     _finished = true;
+                    [self.delegate didFinishPlaying];
+                }
             }
         }
         else
@@ -536,6 +536,7 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
         if (completion) {
             completion();
         }
+        [self.delegate didPauseAtPosition:[self currentPositionSync:true]];
     }];
 }
 
@@ -543,6 +544,7 @@ static OSStatus TGOpusAudioPlayerCallback(void *inRefCon, __unused AudioUnitRend
 {
     [[OpusAudioPlayer _playerQueue] dispatchOnQueue:^
     {
+        [self.delegate didStopAtPosition:[self currentPositionSync:true]];
         [self cleanup];
     }];
 }

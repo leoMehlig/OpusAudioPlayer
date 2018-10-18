@@ -7,8 +7,18 @@
  */
 
 #import <Foundation/Foundation.h>
+@protocol OpusAudioPlayerDelegate <NSObject>
+- (void) didUpdatePosition: (NSTimeInterval) position;
+- (void) didFinishPlaying;
+- (void) didStopAtPosition: (NSTimeInterval) position;
+- (void) didPauseAtPosition: (NSTimeInterval) postion;
+- (void) didStartPlayingFromPosition: (NSTimeInterval) position;
+- (void) didFailWithError: (NSError*) error;
+@end
 
 @interface OpusAudioPlayer: NSObject
+
+@property (nonatomic, weak) id<OpusAudioPlayerDelegate> delegate;
 
 + (bool)canPlayFile:(NSString *)path;
 
