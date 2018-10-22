@@ -143,6 +143,7 @@ static os_unfair_lock audioPositionLock = OS_UNFAIR_LOCK_INIT;
     _graph = NULL;
     _audioGraphInitialized = false;
 
+
     [[OpusAudioPlayer _playerQueue] dispatchOnQueue:^
     {
         if (audioGraph != NULL)
@@ -158,7 +159,7 @@ static os_unfair_lock audioPositionLock = OS_UNFAIR_LOCK_INIT;
         
         if (opusFile != NULL)
             op_free(opusFile);
-    }];
+    } synchronous:true];
     
 }
 
